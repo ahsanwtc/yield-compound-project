@@ -5,8 +5,9 @@ pragma experimental ABIEncoderV2;
 import '@studydefi/money-legos/dydx/contracts/DydxFlashloanBase.sol';
 import '@studydefi/money-legos/dydx/contracts/ICallee.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import './Compound.sol';
 
-contract YieldFarmer is ICallee, DydxFlashloanBase {
+contract YieldFarmer is ICallee, DydxFlashloanBase, Compound {
   /* Direction is only used by Compound */
   enum Direction { Deposit, Withdraw }
   struct Operation {
@@ -21,8 +22,14 @@ contract YieldFarmer is ICallee, DydxFlashloanBase {
     admin = msg.sender;
   }
 
+  function openPosition(address _solo, address _token, address _cToken, uint _amountProvided, uint _amountBorrowed) external {
+    require(msg.sender == admin, 'only admin');                      /* 2 wei fee */
+    _initiateFlashloan(_solo, _token, _cToken, Direction.Deposit, _amountProvided - 2, _amountBorrowed);
+  }
+
   /**
-  *
+  * When loan goes through, dydx will call this function
+  * 
   * @param {address} _sender Address of the dydx exchange which is calling this callback function
   * @param {Account.Info} _account Who borrowed the money. In this case, call function is in the same smart contract as _initiateFlashloan, it will have 
   *                       the same address as this smart contract. It is also possible to start a flash loan and send the money to a different
@@ -31,6 +38,19 @@ contract YieldFarmer is ICallee, DydxFlashloanBase {
   */
   function callFunction(address _sender, Account.Info memory _account, bytes memory _data) public {
     Operation memory operation = abi.decode(_data, (Operation));
+    
+    /* when loan is initiated, direction = deposit  */
+    if (operation.direction == Direction.Deposit) {
+      /* lend to Compound */
+      /* amount would be the amount we provided + the amount borrowed from dydx */
+      supply(operation.cToken, operation.amountProvided + operation.amountBorrowed);
+      
+      /* leverage our collateral to borrow */
+      enterMarket(operation.cToken);
+
+      /* borrow the same amount of tokens which we got from flash loan */
+      borrow(operation.cToken, operation.amountBorrowed);
+    }
   }
   
   
