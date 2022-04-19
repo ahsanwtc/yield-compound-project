@@ -27,6 +27,28 @@ contract YieldFarmer is ICallee, DydxFlashloanBase, Compound {
     _initiateFlashloan(_solo, _token, _cToken, Direction.Deposit, _amountProvided - 2, _amountBorrowed);
   }
 
+  function closeFunction(address _solo, address _token, address _cToken) external {
+    require(msg.sender == admin, 'only admin');
+    
+    /* need fee to close the loan */
+    IERC20(_token).transferFrom(msg.sender, address(this), 2);
+
+    claimComp();
+    uint borrowedBalance = getBorrowBalance(_cToken);
+    _initiateFlashloan(_solo, _token, _cToken, Direction.Withdraw, 0, borrowedBalance);
+
+    /* withdraw comp token */
+    address compTokenAddress = getCompAddress();
+    IERC20 compToken = IERC20(compTokenAddress);
+    uint compTokenBalance = compToken.balanceOf(address(this));
+    compToken.transfer(msg.sender, compTokenBalance);
+
+    /* withdraw underlying token */
+    IERC20 token = IERC20(_token);
+    uint balance = token.balanceOf(address(this));
+    token.transfer(msg.sender, balance);
+  }
+
   /**
   * When loan goes through, dydx will call this function
   * 
@@ -50,6 +72,15 @@ contract YieldFarmer is ICallee, DydxFlashloanBase, Compound {
 
       /* borrow the same amount of tokens which we got from flash loan */
       borrow(operation.cToken, operation.amountBorrowed);
+    } else {
+      /* repay the loan */
+      repayBorrow(operation.cToken, operation.amountBorrowed);
+
+      /* cTokens which are owned by this contract to Compound */
+      uint cTokenBalance = getcTokenBalance(operation.cToken);
+
+      /* redeem the tokens so the underlying tokens are back in the smart contract*/
+      redeem(operation.cToken, cTokenBalance);
     }
   }
   
@@ -80,15 +111,15 @@ contract YieldFarmer is ICallee, DydxFlashloanBase, Compound {
     Actions.ActionArgs[] memory operations = new Actions.ActionArgs[](3);
 
     operations[0] = _getWithdrawAction(marketId, _amountBorrowed);
-    operations[1] = _getCallAction(
-        /* Encode MyCustomData for callFunction */
-        abi.encode(Operation({
-          token: _token, 
-          cToken: _cToken, 
-          direction: _direction,
-          amountProvided: _amountProvided, 
-          amountBorrowed: _amountBorrowed
-        }))
+    operations[1] = _getCallAction(    
+      /* Encode MyCustomData for callFunction */
+      abi.encode(Operation({
+        token: _token, 
+        cToken: _cToken, 
+        direction: _direction,
+        amountProvided: _amountProvided, 
+        amountBorrowed: _amountBorrowed
+      }))
     );
     operations[2] = _getDepositAction(marketId, repayAmount);
 
