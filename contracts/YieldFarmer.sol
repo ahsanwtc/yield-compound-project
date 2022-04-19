@@ -20,6 +20,18 @@ contract YieldFarmer is ICallee, DydxFlashloanBase {
   constructor() public {
     admin = msg.sender;
   }
+
+  /**
+  *
+  * @param {address} _sender Address of the dydx exchange which is calling this callback function
+  * @param {Account.Info} _account Who borrowed the money. In this case, call function is in the same smart contract as _initiateFlashloan, it will have 
+  *                       the same address as this smart contract. It is also possible to start a flash loan and send the money to a different
+  *                       smart contract.
+  * @param {bytes} _data Operation data 
+  */
+  function callFunction(address _sender, Account.Info memory _account, bytes memory _data) public {
+    Operation memory operation = abi.decode(_data, (Operation));
+  }
   
   
   /**
